@@ -1,5 +1,6 @@
 import { LAYERS, HOUSES, RESIDENTS, AVATARS, TRAITS, RIVAL, CHAT_POOL, total } from './data.js';
-import { drawAvatar, FaceRig, neutralPose } from './avatar.js';
+import { FaceRig, neutralPose } from './avatar.js';
+import { VrmView } from './vrm.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const view = $('#view');
@@ -23,25 +24,29 @@ const everyone = () => {
   return list.sort((a, b) => b.sum - a.sum);
 };
 
-// 초상 그리기. 실사층은 아직 그릴 수 없어 윤곽만 둔다.
-function portrait(canvas, avatarId, pose) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 300;
+// 초상 그리기. 3D 모델은 VrmView 가, 실사층은 아직 그릴 수 없어 윤곽만 둔다.
+const views = new Map(); // canvas → VrmView
+function silhouette(canvas) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), w = canvas.clientWidth || 300, h = canvas.clientHeight || 300;
   if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
-  const ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const av = avOf(avatarId);
-  if (!av || av.kind === 'locked') {
-    ctx.fillStyle = '#1a1d25'; ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#2a2f3b'; const s = Math.min(w, h);
-    ctx.beginPath(); ctx.arc(w / 2, h * 0.42, s * 0.2, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(w / 2, h * 1.02, s * 0.36, s * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#8a91a3'; ctx.font = '13px Pretendard, sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('실사층 초상은 변환 서버 연결 후 표시', w / 2, h - 14);
-    return;
-  }
-  drawAvatar(ctx, av, pose || { ...neutralPose(), smile: 0.5, yaw: 0.12 }, w, h);
+  const ctx = canvas.getContext('2d'); if (!ctx) return; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#1a1d25'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#2a2f3b'; const s = Math.min(w, h);
+  ctx.beginPath(); ctx.arc(w / 2, h * 0.42, s * 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w / 2, h * 1.02, s * 0.36, s * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#8a91a3'; ctx.font = '13px Pretendard, sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('실사층 초상은 변환 서버 연결 후 표시', w / 2, h - 14);
 }
-const paintPortraits = () => document.querySelectorAll('canvas[data-av]').forEach((c) => portrait(c, c.dataset.av));
+function portrait(canvas, avatarId, pose) {
+  const av = avOf(avatarId);
+  if (!av || av.kind === 'locked') { const v = views.get(canvas); if (v) v.blank(); else silhouette(canvas); return; }
+  let v = views.get(canvas); if (!v) { v = new VrmView(canvas); views.set(canvas, v); }
+  v.show(av); v.render(window.__pose || pose || { ...neutralPose(), smile: 0.5, yaw: 0.12 });
+}
+const dropViews = () => { for (const v of views.values()) v.dispose(); views.clear(); };
+// 목록에 쓰는 작은 초상: 3D 모델은 미리 찍어 둔 그림, 실사층은 윤곽
+const thumb = (id) => (avOf(id)?.kind === 'vrm' ? `<img class="pt" src="thumbs/${id}.jpg" alt="" loading="lazy">` : `<canvas data-av="${id}"></canvas>`);
+const paintPortraits = () => document.querySelectorAll('canvas[data-av]').forEach((c) => silhouette(c));
 
 const layerTag = (k) => `<span class="tag"><i style="background:${LAYERS[k].color}"></i>${LAYERS[k].name}</span>`;
 
@@ -81,7 +86,7 @@ function cityView() {
     </svg></div>
     <p class="small dim" style="margin-top:8px">${me ? '구역을 누르면 내 자리가 그 구역으로 옮겨집니다. ' : ''}주민을 누르면 인물 시트가 열립니다.</p>
     <section><h2>지금 방송 중</h2><div class="grid">
-      ${live.map((r) => `<a class="card" href="#/live/${r.id}"><canvas data-av="${r.avatar}"></canvas><div class="b">
+      ${live.map((r) => `<a class="card" href="#/live/${r.id}">${thumb(r.avatar)}<div class="b">
         <div class="row" style="justify-content:space-between"><b>${r.name}</b><span class="live">방송 중 <span class="num">${fmt(r.viewers)}</span></span></div>
         <span class="small dim">${r.talent} · ${r.trait}</span>${layerTag(r.layer)}</div></a>`).join('')}
     </div></section>`;
@@ -126,7 +131,7 @@ function sheetView(id) {
   const rank = everyone().findIndex((x) => x.id === id) + 1;
   view.innerHTML = `
     <div class="sheet">
-      <div><canvas data-av="${r.avatar}"></canvas>
+      <div><canvas id="cv"></canvas>
         <div class="row" style="margin-top:12px">${r.live ? `<a class="btn go" href="#/live/${r.id}">방송 보기</a>` : '<span class="dim">지금은 쉬는 중입니다</span>'}</div></div>
       <div>
         <div class="row" style="justify-content:space-between"><h1>${r.name}</h1><span class="num dim">전광판 ${rank}위 · 광도 ${fmt(total(r.score))}</span></div>
@@ -142,7 +147,9 @@ function sheetView(id) {
         </dl>
       </div>
     </div>`;
-  paintPortraits(); view.onclick = null;
+  const cv = $('#cv'); const rig = new FaceRig(); let raf;
+  const loop = (now) => { portrait(cv, r.avatar, rig.update(now)); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop);
+  cleanup = () => cancelAnimationFrame(raf); view.onclick = null;
 }
 
 /* ───────── 방송 화면 공통 ───────── */
@@ -323,12 +330,28 @@ function onairView() {
   cleanup = () => { cancelAnimationFrame(raf); clearInterval(tick); stopChat(); rig.stop(); if (on) { me.score.live += gained; store.set(me); } }; view.onclick = null;
 }
 
+/* ───────── 작은 초상 찍기(개발용, 로컬 서버에서만) ───────── */
+async function thumbsView() {
+  view.innerHTML = '<div class="flow"><h1>작은 초상 찍기</h1><div style="width:384px;max-width:100%"><canvas id="cv" style="width:384px;height:240px;display:block"></canvas></div><pre id="log" class="small dim"></pre></div>';
+  const cv = $('#cv'), log = $('#log'); const pose = { ...neutralPose(), smile: 0.6, yaw: 0.14, pitch: 0.02 };
+  for (const av of AVATARS.filter((x) => x.kind === 'vrm')) {
+    portrait(cv, av.id, pose); const v = views.get(cv);
+    for (let i = 0; i < 600 && v.state === 'loading'; i++) await new Promise((r) => setTimeout(r, 100));
+    if (v.state !== 'ready') { log.textContent += av.id + ' 실패\n'; continue; }
+    for (let i = 0; i < 20; i++) { v.render(pose); await new Promise((r) => setTimeout(r, 30)); }
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.86));
+    const res = await fetch('/__thumb?name=' + av.id, { method: 'POST', body: blob });
+    log.textContent += av.id + ' ' + res.status + ' ' + blob.size + '\n';
+  }
+  log.textContent += '끝';
+}
+
 /* ───────── 길 찾기 ───────── */
 function route() {
-  cleanup(); cleanup = () => {};
+  cleanup(); cleanup = () => {}; dropViews();
   const [, a = '', b] = location.hash.split('/');
   document.querySelectorAll('[data-nav]').forEach((n) => n.classList.toggle('on', n.dataset.nav === ({ '': 'city', rank: 'rank', me: 'me', join: 'me', onair: 'me' }[a] || 'city')));
-  ({ '': cityView, rank: rankView, r: () => sheetView(b), live: () => liveView(b), join: joinView, me: meView, onair: onairView }[a] || cityView)();
+  ({ '': cityView, rank: rankView, r: () => sheetView(b), live: () => liveView(b), join: joinView, me: meView, onair: onairView, thumbs: thumbsView }[a] || cityView)();
   window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', route);
