@@ -49,8 +49,9 @@ section > h2 { margin-bottom: 12px; }
 .card { display: block; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
 .card canvas, .card img.pt { display: block; width: 100%; aspect-ratio: 16 / 10; background: #111; object-fit: cover; }
 .card img.ag { object-position: 50% 16%; }
-.sheet img.still { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--r); border: 1px solid var(--line); }
-.stage img.still { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; object-position: 50% 12%; }
+.sheet .still { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--r); border: 1px solid var(--line); }
+.stage video.still { position: static; right: auto; top: auto; border: 0; border-radius: 0; transform: none; background: #111; }
+.stage .still { display: block; width: 100%; aspect-ratio: 3 / 4; object-fit: cover; object-position: 50% 12%; }
 @keyframes breathe { from { transform: scale(1); } to { transform: scale(1.025) translateY(-0.4%); } }
 .stage img.breathe { animation: breathe 3.2s ease-in-out infinite alternate; transform-origin: 50% 100%; }
 @media (prefers-reduced-motion: reduce) { .stage img.breathe { animation: none; } }
