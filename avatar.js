@@ -141,11 +141,18 @@ export class FaceRig {
     if (this.mode === 'track' && this.fl && this.video.readyState >= 2 && now !== this._t) {
       this._t = now; this._n++;
       // 전신일 때는 몸과 얼굴을 한 프레임씩 번갈아 읽어 폰 부담을 줄인다
-      if (this.body && this.pl && this._n % 2 === 0) {
+      if (this.body && this.pl && this._n % 3 !== 0) {
         let pr; try { pr = this.pl.detectForVideo(this.video, now); } catch { pr = null; }
-        const w = pr?.worldLandmarks?.[0];
-        if (w) { const old = p.body; p.body = w.map((q, i) => { const o = old?.[i]; return o ? { x: mix(o.x, q.x), y: mix(o.y, q.y), z: mix(o.z, q.z), v: q.visibility ?? 1 } : { x: q.x, y: q.y, z: q.z, v: q.visibility ?? 1 }; }); }
-        else p.body = null;
+        const w = pr?.worldLandmarks?.[0], l2 = pr?.landmarks?.[0];
+        if (w) {
+          // 떨림 거르기: 가만히 있을 때는 세게, 빨리 움직일 때는 약하게 눌러 반응을 살린다
+          const dt = Math.max(0.001, (now - (this._bt || now - 33)) / 1000); this._bt = now; const f = this._bf || (this._bf = []);
+          const al = (c) => 1 / (1 + 1 / (2 * Math.PI * c * dt));
+          const euro = (st, key, x) => { if (st[key] === undefined) { st[key] = x; st['d' + key] = 0; return x; }
+            const d = st['d' + key] += (((x - st[key]) / dt) - st['d' + key]) * al(1); return st[key] += (x - st[key]) * al(1.5 + 5 * Math.abs(d)); };
+          p.body = w.map((q, i) => { const st = f[i] || (f[i] = {}); return { x: euro(st, 'x', q.x), y: euro(st, 'y', q.y), z: euro(st, 'z', q.z), v: q.visibility ?? 1 }; });
+          if (l2?.[23] && l2?.[24]) p.bodyX = mix(p.bodyX || 0, (0.5 - (l2[23].x + l2[24].x) / 2) * 2);
+        } else { p.body = null; this._bf = null; }
         return p;
       }
       let r; try { r = this.fl.detectForVideo(this.video, now); } catch { r = null; }
