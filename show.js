@@ -26,7 +26,7 @@ const FAKE = ['오늘도 야근?', 'ㅋㅋㅋㅋ', '팀장님 또 나왔다', '�
 
 export async function mountShow(view, r, opts = {}) {
   let dead = false; const timers = []; const urls = {};
-  const base = r.show, nick = opts.nick || '나';
+  const base = r.show; let nick = opts.nick || '나'; try { nick = localStorage.getItem('onair.nick') || nick; } catch {}
   view.innerHTML = `
     <div class="row" style="justify-content:space-between;margin-bottom:12px"><div><h1>${esc(r.name)}</h1><span class="small dim" id="seg">방송 준비 중</span></div>
       <span class="live">방송 중 <span class="num" id="vw">${(r.viewers || 300).toLocaleString('ko-KR')}</span></span></div>
@@ -35,8 +35,9 @@ export async function mountShow(view, r, opts = {}) {
         <div class="cap" id="cap">모습 불러오는 중</div>
         <div class="say" id="say" hidden><div class="quote" id="quote" hidden></div><p id="line"></p></div></div>
       <div class="row small dim" style="margin-top:8px;justify-content:space-between"><span id="clock">0:00 / 30:00</span><span id="brain"></span></div>
+      <div class="box memo" id="memo" hidden></div>
     </div>
-    <div class="chat"><div class="h">채팅 · 치면 ${esc(r.name)}이 읽고 답합니다</div><div class="list" id="list"></div>
+    <div class="chat"><div class="h">채팅 · 치면 ${esc(r.name)}이 읽고 답합니다 <label class="nick">내 이름 <input type="text" id="nick" maxlength="12" value="${esc(nick)}"></label></div><div class="list" id="list"></div>
       <div class="f"><form id="form" class="row" style="flex-wrap:nowrap"><input type="text" id="msg" maxlength="80" placeholder="채팅 입력" autocomplete="off"><button class="btn go" style="flex:0 0 auto">보내기</button></form>
         <div class="row" style="margin-top:8px">${[10, 50, 100].map((n) => `<button class="btn" data-gift="${n}">빛 ${n}</button>`).join('')}</div></div></div></div>`;
   const $ = (s) => view.querySelector(s);
@@ -53,8 +54,26 @@ export async function mountShow(view, r, opts = {}) {
   if (dead) return () => {};
   $('#cap').hidden = true;
 
-  let brain = false;
-  fetch('api/health').then((x) => (x.ok ? x.json() : null)).then((j) => { brain = !!j?.ok; $('#brain').textContent = brain ? '대사 서버 연결됨' : '대사 서버 없음 · 정해 둔 답으로 반응'; }).catch(() => { $('#brain').textContent = '대사 서버 없음 · 정해 둔 답으로 반응'; });
+  const session = Date.now().toString(36) + Math.random().toString(36).slice(2, 6), told = []; // 오늘 방송 기억: 이미 끝낸 썰 제목
+  const queue = []; let brain = false;
+  const api = (path, body) => fetch('api/' + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: r.id, ...body }) }).then((x) => (x.ok ? x.json() : null));
+  // 기억 칸: 이 인물이 나에 대해 아는 것과 요즘 상태를 보여 준다(대사 서버가 있을 때만)
+  const memo = $('#memo');
+  const drawMemo = () => { if (!brain || dead) return; fetch(`api/memory/${r.id}?user=${encodeURIComponent(nick)}`).then((x) => x.json()).then((m) => {
+    if (dead || !m?.state) return; const me2 = m.me || {}, life = (m.life || []).slice(-1)[0], ep = (m.episodes || []).slice(-1)[0];
+    memo.hidden = false; memo.innerHTML = `<h3>${esc(r.name)}의 기억</h3>
+      <dl><div><dt>${esc(nick)} 님과의 사이</dt><dd>${esc(me2.bond || '처음 보는 사이')} · 방송 ${me2.visits || 0}번 · 빛 ${me2.gifts || 0}개</dd></div>
+      <div><dt>나에 대해 아는 것</dt><dd>${(me2.facts || []).map(esc).join(' · ') || '아직 없음'}</dd></div>
+      <div><dt>다음에 물어보려는 것</dt><dd>${(me2.loops || []).map(esc).join(' · ') || '없음'}</dd></div>
+      <div><dt>지금 기분</dt><dd>${esc(m.state.mood || '평소')}</dd></div>
+      <div><dt>요즘 드는 생각</dt><dd>${(m.state.beliefs || []).map(esc).join(' · ') || '아직 없음'}</dd></div>
+      <div><dt>진행 중인 일</dt><dd>${Object.values(m.state.storylines || {}).map((v) => `<b>${esc(v.title)}</b> ${esc(v.status)}`).join('<br>')}</dd></div>
+      ${life ? `<div><dt>최근 방송 밖에서 있었던 일</dt><dd>${esc(life.text)}</dd></div>` : ''}
+      ${ep ? `<div><dt>지난 방송 일기 (${esc(ep.date)})</dt><dd>${esc(ep.diary)}</dd></div>` : ''}</dl>
+      <p class="small dim">쌓인 일화 ${m.events}개 · 기억하는 관측자 ${m.viewers}명</p>`; }).catch(() => {}); };
+  fetch('api/health').then((x) => (x.ok ? x.json() : null)).then((j) => { brain = !!j?.ok; $('#brain').textContent = brain ? `대사 서버 연결됨 · ${j.model}` : '대사 서버 없음 · 정해 둔 답으로 반응';
+    if (brain) { drawMemo(); api('open', { user: nick, session }).then((o) => { if (o?.lines?.length) queue.push({ q: `${nick} 님이 들어왔습니다`, lines: o.lines.map((l) => [l.t, l.m]) }); }).catch(() => {}); } }).catch(() => { $('#brain').textContent = '대사 서버 없음 · 정해 둔 답으로 반응'; });
+  $('#nick').onchange = (e) => { nick = e.target.value.trim() || '나'; try { localStorage.setItem('onair.nick', nick); } catch {} drawMemo(); };
 
   // 동작 바꾸기: 두 영상을 겹쳐 두고 다음 것을 틀면서 바꿔치기한다
   let clipNow = '';
@@ -79,14 +98,14 @@ export async function mountShow(view, r, opts = {}) {
   }
 
   // 끼어들기 대기줄: 채팅 답, 후원 리액션
-  const queue = []; const history = []; let segTitle = '', lastLine = '', inSeg = false;
-  const session = Date.now().toString(36) + Math.random().toString(36).slice(2, 6), told = []; // 오늘 방송 기억: 이미 끝낸 썰 제목
+  const history = []; let segTitle = '', lastLine = '', inSeg = false;
   async function reply(kind, who, text, amount) {
     let lines = null;
     if (brain) {
       try {
-        const res = await fetch('api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: r.id, kind, user: who, text, amount, context: `${segTitle} — ${lastLine}`, session, told }) });
-        if (res.ok) lines = (await res.json()).lines?.map((l) => [l.t, l.m]);
+        const j = await api('chat', { kind, user: who, text, amount, context: `${segTitle} — ${lastLine}`, session, told });
+        if (j?.lines) lines = j.lines.map((l) => [l.t, l.m]);
+        if (who === nick) drawMemo();
       } catch (e) { /* 아래 정해 둔 답으로 */ }
     }
     if (!lines?.length) lines = kind === 'gift' ? giftFallback(who, amount) : pick((FALLBACK.find(([re]) => re.test(text)) || [0, FALL_ANY])[1]);
@@ -127,5 +146,8 @@ export async function mountShow(view, r, opts = {}) {
     }
   })();
 
-  return () => { dead = true; clearInterval(tick); timers.forEach(clearTimeout); vids.forEach((v) => { v.pause(); v.removeAttribute('src'); }); Object.values(urls).forEach((u) => URL.revokeObjectURL(u)); };
+  // 방송을 떠나면 그날을 일기로 남기게 한다
+  const bye = () => { if (brain) try { navigator.sendBeacon('api/end', JSON.stringify({ id: r.id, session, told })); } catch {} };
+  window.addEventListener('pagehide', bye, { once: true });
+  return () => { bye(); window.removeEventListener('pagehide', bye); dead = true; clearInterval(tick); timers.forEach(clearTimeout); vids.forEach((v) => { v.pause(); v.removeAttribute('src'); }); Object.values(urls).forEach((u) => URL.revokeObjectURL(u)); };
 }
