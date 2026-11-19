@@ -80,11 +80,12 @@ export async function mountShow(view, r, opts = {}) {
 
   // 끼어들기 대기줄: 채팅 답, 후원 리액션
   const queue = []; const history = []; let segTitle = '', lastLine = '', inSeg = false;
+  const session = Date.now().toString(36) + Math.random().toString(36).slice(2, 6), told = []; // 오늘 방송 기억: 이미 끝낸 썰 제목
   async function reply(kind, who, text, amount) {
     let lines = null;
     if (brain) {
       try {
-        const res = await fetch('api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: r.id, kind, user: who, text, amount, context: `${segTitle} — ${lastLine}`, history }) });
+        const res = await fetch('api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: r.id, kind, user: who, text, amount, context: `${segTitle} — ${lastLine}`, session, told }) });
         if (res.ok) lines = (await res.json()).lines?.map((l) => [l.t, l.m]);
       } catch (e) { /* 아래 정해 둔 답으로 */ }
     }
@@ -119,6 +120,7 @@ export async function mountShow(view, r, opts = {}) {
           const l = seg.lines[i]; lastLine = l.t;
           await speak(l.t, l.m);
           if (dead) return;
+          if (i === seg.lines.length - 1 && !seg.break) told.push(seg.title);
           if (Math.random() < 0.18) { say.hidden = true; play('idle', true); await wait(700 + Math.random() * 900); }
         }
       }
