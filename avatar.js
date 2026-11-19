@@ -95,7 +95,7 @@ export function drawAvatar(ctx, av, p, w, h) {
 
 // 얼굴 추적기. 카메라와 모델을 못 쓰면 가만히 숨 쉬는 동작으로 대신한다.
 export class FaceRig {
-  constructor() { this.pose = neutralPose(); this.mode = 'idle'; this.video = null; this.stream = null; this._t = 0; this.error = ''; }
+  constructor() { this.pose = neutralPose(); this.mode = 'idle'; this.body = false; this.pl = null; this._n = 0; this.video = null; this.stream = null; this._t = 0; this.error = ''; }
 
   async start(video) {
     this.video = video;
@@ -116,13 +116,38 @@ export class FaceRig {
     return this.mode;
   }
 
-  stop() { this.stream?.getTracks().forEach((t) => t.stop()); this.stream = null; this.fl?.close?.(); this.fl = null; if (this.video) this.video.srcObject = null; this.mode = 'idle'; }
+  // 전신 추적을 켜고 끈다. 몸 관절 모델은 처음 켤 때 한 번만 받는다.
+  async setBody(on) {
+    this.body = !!on; this.pose.full = this.body; if (!this.body) this.pose.body = null;
+    if (!this.body || this.pl || this.mode !== 'track' || this._plLoading) return this.body;
+    this._plLoading = true;
+    try {
+      const v = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+      const { PoseLandmarker, FilesetResolver } = await import(/* @vite-ignore */ `${v}/vision_bundle.mjs`);
+      const files = await FilesetResolver.forVisionTasks(`${v}/wasm`);
+      this.pl = await PoseLandmarker.createFromOptions(files, {
+        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task', delegate: 'GPU' },
+        runningMode: 'VIDEO', numPoses: 1,
+      });
+    } catch (e) { this.error = '몸 인식 모델을 불러오지 못했습니다'; this.body = false; this.pose.full = false; }
+    this._plLoading = false; return this.body;
+  }
+
+  stop() { this.stream?.getTracks().forEach((t) => t.stop()); this.stream = null; this.fl?.close?.(); this.fl = null; this.pl?.close?.(); this.pl = null; this.body = false; this.pose.body = null; this.pose.full = false; if (this.video) this.video.srcObject = null; this.mode = 'idle'; }
 
   // 매 프레임 호출. 현재 자세를 돌려준다.
   update(now) {
     const p = this.pose, k = 0.45, mix = (a, b) => a + (b - a) * k;
     if (this.mode === 'track' && this.fl && this.video.readyState >= 2 && now !== this._t) {
-      this._t = now;
+      this._t = now; this._n++;
+      // 전신일 때는 몸과 얼굴을 한 프레임씩 번갈아 읽어 폰 부담을 줄인다
+      if (this.body && this.pl && this._n % 2 === 0) {
+        let pr; try { pr = this.pl.detectForVideo(this.video, now); } catch { pr = null; }
+        const w = pr?.worldLandmarks?.[0];
+        if (w) { const old = p.body; p.body = w.map((q, i) => { const o = old?.[i]; return o ? { x: mix(o.x, q.x), y: mix(o.y, q.y), z: mix(o.z, q.z), v: q.visibility ?? 1 } : { x: q.x, y: q.y, z: q.z, v: q.visibility ?? 1 }; }); }
+        else p.body = null;
+        return p;
+      }
       let r; try { r = this.fl.detectForVideo(this.video, now); } catch { r = null; }
       const b = r?.faceBlendshapes?.[0]?.categories, m = r?.facialTransformationMatrixes?.[0]?.data, lm = r?.faceLandmarks?.[0];
       this.seen = !!b;

@@ -310,22 +310,26 @@ function onairView() {
       <div class="stage"><canvas id="cv"></canvas><video id="vd" playsinline muted hidden></video><div class="cap" id="cap">아직 켜지 않았습니다</div>
         <div class="name"><span>"${esc(me.greet[0])}" → 채팅 "${esc(me.greet[1])}"</span></div></div>
       <div class="stats" style="margin-top:10px"><div><span class="small dim">보는 관측자</span><b class="num" id="s1">0</b></div><div><span class="small dim">이번 방송 광도</span><b class="num" id="s2">+0</b></div><div><span class="small dim">켠 시간</span><b class="num" id="s3">0:00</b></div></div>
-      <div class="row" style="margin-top:10px"><button class="btn go" id="go">카메라 켜고 방송 시작</button><button class="btn" id="noc">카메라 없이 시작</button></div>
+      <div class="row" style="margin-top:10px"><button class="btn go" id="go">카메라 켜고 방송 시작</button><button class="btn" id="noc">카메라 없이 시작</button><button class="btn" id="bd" hidden>전신으로 보기</button></div>
       <p class="small dim" style="margin-top:8px">시연판이라 실제로 송출되지는 않습니다. 영상은 이 기기 밖으로 나가지 않습니다.</p></div>
       ${chatHtml('<span class="small dim">방송을 켜면 관측자가 들어옵니다</span>')}</div>`;
   const cv = $('#cv');
   const loop = (now) => { portrait(cv, me.avatar, rig.update(now)); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop);
   const end = () => { if (!on) return; on = false; clearInterval(tick); stopChat(); rig.stop(); me.score.live += gained; store.set(me);
-    $('#lv').hidden = true; $('#cap').textContent = `방송 종료. 이번 방송 광도 +${fmt(gained)}`; $('#go').textContent = '다시 켜기'; $('#go').onclick = () => start(true); $('#noc').hidden = false; };
+    $('#lv').hidden = true; $('#cap').textContent = `방송 종료. 이번 방송 광도 +${fmt(gained)}`; $('#bd').hidden = true; $('#bd').textContent = '전신으로 보기'; $('#go').textContent = '다시 켜기'; $('#go').onclick = () => start(true); $('#noc').hidden = false; };
   const start = async (cam) => {
     $('#go').disabled = true; $('#noc').hidden = true; gained = 0; viewers = 0;
     if (cam) { $('#cap').textContent = '카메라 여는 중'; $('#vd').hidden = false; const m = await rig.start($('#vd')); if (m !== 'track') $('#vd').hidden = true; $('#cap').textContent = m === 'track' ? '내 얼굴을 따라 움직입니다' : `${rig.error}. 미리보기 동작으로 진행합니다`; }
     else $('#cap').textContent = '카메라 없이 미리보기 동작';
+    $('#bd').hidden = rig.mode !== 'track';
     on = true; t0 = Date.now(); $('#lv').hidden = false; $('#go').disabled = false; $('#go').textContent = '방송 끝내기'; $('#go').onclick = end;
     stopChat = chatBox(view);
     tick = setInterval(() => { viewers = Math.max(1, Math.round(viewers + 1 + Math.random() * 6 - (viewers > 60 ? 3 : 0))); gained += Math.round(viewers * 0.15);
       const s = Math.floor((Date.now() - t0) / 1000); $('#s1').textContent = fmt(viewers); $('#s2').textContent = '+' + fmt(gained); $('#s3').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
   };
+  $('#bd').onclick = async () => { const b = $('#bd'); b.disabled = true; if (!rig.body) $('#cap').textContent = '몸 인식 준비 중';
+    const full = await rig.setBody(!rig.body); b.disabled = false; b.textContent = full ? '얼굴만 보기' : '전신으로 보기';
+    $('#cap').textContent = full ? '몸 전체가 보이게 두세 걸음 물러나세요' : (rig.error && !rig.pl ? rig.error : '내 얼굴을 따라 움직입니다'); };
   $('#go').onclick = () => start(true); $('#noc').onclick = () => start(false);
   cleanup = () => { cancelAnimationFrame(raf); clearInterval(tick); stopChat(); rig.stop(); if (on) { me.score.live += gained; store.set(me); } }; view.onclick = null;
 }
