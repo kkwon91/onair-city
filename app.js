@@ -169,6 +169,9 @@ const chatHtml = (btn) => `<div class="chat"><div class="h">시연용 가상 채
 
 function liveView(id) {
   const r = resOf(id); if (!r || !r.live) return sheetView(id);
+  // 대본 방송이 준비된 주민은 썰을 풀며 채팅에 반응하는 화면으로 연다
+  if (r.show) { let off = () => {}, gone = false; cleanup = () => { gone = true; off(); }; view.onclick = null;
+    import('./show.js').then((m) => m.mountShow(view, r, { nick: me?.name })).then((f) => { off = f; if (gone) f(); }); return; }
   view.innerHTML = `
     <div class="row" style="justify-content:space-between;margin-bottom:12px"><div><h1>${r.name}</h1><span class="small dim">${r.talent} · ${LAYERS[r.layer].name} · 하우스 ${HOUSES[r.house].name}</span></div>
       <span class="live">방송 중 <span class="num" id="vw">${fmt(r.viewers)}</span></span></div>
