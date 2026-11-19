@@ -57,9 +57,8 @@ function restOf(vrm) {
   if (la && ra) { rest.chestInv = basis(wpos(ra).sub(wpos(la)), UP, new THREE.Quaternion()).invert(); rest.headInv = rest.chestInv.clone(); }
   rest.feet = ['leftFoot', 'rightFoot', 'leftToes', 'rightToes'].map(B).filter(Boolean);
   rest.footY = rest.feet.length ? Math.min(...rest.feet.map((f) => wpos(f).y)) : 0;
-  // 몸을 못 잡았을 때의 기본 자세: 팔을 내린다
-  rest.down.leftUpperArm = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, 1.25));
-  rest.down.rightUpperArm = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, -1.25));
+  // 몸을 못 잡았을 때의 기본 자세: 팔을 내린다(모델 규격마다 축이 달라 방향으로 정한다)
+  for (const b of ['leftUpperArm', 'rightUpperArm']) if (rest.dir[b]) rest.down[b] = new THREE.Vector3(Math.sign(rest.dir[b].x) * 0.32, -1, 0).normalize();
   return rest;
 }
 
@@ -93,7 +92,8 @@ function applyBody(vrm, rest, lm, k) {
   for (const [bone, i, js] of LIMBS) {
     const n = B(bone); if (!n) continue;
     if (ok(i, ...js) && rest.dir[bone]) { const d = mid(js, V()).sub(P(i, V())).normalize(); aim(n, _q.setFromUnitVectors(rest.dir[bone], d), rest.R, k); }
-    else n.quaternion.slerp(rest.down[bone] || IDLE, k);
+    else if (rest.down[bone]) aim(n, _q.setFromUnitVectors(rest.dir[bone], rest.down[bone]), rest.R, k);
+    else n.quaternion.slerp(IDLE, k);
   }
   // 고개: 두 귀의 선과 코 방향으로
   if (head && ok(0, 7, 8) && rest.headInv) {
