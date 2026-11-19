@@ -45,6 +45,8 @@ function portrait(canvas, avatarId, pose) {
 }
 const dropViews = () => { for (const v of views.values()) v.dispose(); views.clear(); };
 // 목록에 쓰는 작은 초상: 3D 모델은 미리 찍어 둔 그림, 실사층은 윤곽
+// 주민의 작은 초상: 그림 초상이 있으면 그것을 쓴다
+const face = (r) => (r.img ? `<img class="pt ag" src="${r.img}" alt="" loading="lazy">` : thumb(r.avatar));
 const thumb = (id) => (avOf(id)?.kind === 'vrm' ? `<img class="pt" src="thumbs/${id}.jpg" alt="" loading="lazy">` : `<canvas data-av="${id}"></canvas>`);
 const paintPortraits = () => document.querySelectorAll('canvas[data-av]').forEach((c) => silhouette(c));
 
@@ -86,7 +88,7 @@ function cityView() {
     </svg></div>
     <p class="small dim" style="margin-top:8px">${me ? '구역을 누르면 내 자리가 그 구역으로 옮겨집니다. ' : ''}주민을 누르면 인물 시트가 열립니다.</p>
     <section><h2>지금 방송 중</h2><div class="grid">
-      ${live.map((r) => `<a class="card" href="#/live/${r.id}">${thumb(r.avatar)}<div class="b">
+      ${live.map((r) => `<a class="card" href="#/live/${r.id}">${face(r)}<div class="b">
         <div class="row" style="justify-content:space-between"><b>${r.name}</b><span class="live">방송 중 <span class="num">${fmt(r.viewers)}</span></span></div>
         <span class="small dim">${r.talent} · ${r.trait}</span>${layerTag(r.layer)}</div></a>`).join('')}
     </div></section>`;
@@ -131,7 +133,7 @@ function sheetView(id) {
   const rank = everyone().findIndex((x) => x.id === id) + 1;
   view.innerHTML = `
     <div class="sheet">
-      <div><canvas id="cv"></canvas>
+      <div>${r.img ? `<img class="still" src="${r.img}" alt="${r.name} 초상">` : '<canvas id="cv"></canvas>'}
         <div class="row" style="margin-top:12px">${r.live ? `<a class="btn go" href="#/live/${r.id}">방송 보기</a>` : '<span class="dim">지금은 쉬는 중입니다</span>'}</div></div>
       <div>
         <div class="row" style="justify-content:space-between"><h1>${r.name}</h1><span class="num dim">전광판 ${rank}위 · 광도 ${fmt(total(r.score))}</span></div>
@@ -147,6 +149,7 @@ function sheetView(id) {
         </dl>
       </div>
     </div>`;
+  if (r.img) { cleanup = () => {}; view.onclick = null; return; }
   const cv = $('#cv'); const rig = new FaceRig(); let raf;
   const loop = (now) => { portrait(cv, r.avatar, rig.update(now)); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop);
   cleanup = () => cancelAnimationFrame(raf); view.onclick = null;
@@ -167,10 +170,10 @@ function liveView(id) {
   view.innerHTML = `
     <div class="row" style="justify-content:space-between;margin-bottom:12px"><div><h1>${r.name}</h1><span class="small dim">${r.talent} · ${LAYERS[r.layer].name} · 하우스 ${HOUSES[r.house].name}</span></div>
       <span class="live">방송 중 <span class="num" id="vw">${fmt(r.viewers)}</span></span></div>
-    <div class="liveview"><div class="stage"><canvas id="cv"></canvas><div class="name"><span>"${r.greet[0]}"</span><a class="btn" href="#/r/${r.id}">인물 시트</a></div></div>
+    <div class="liveview"><div class="stage">${r.img ? `<img class="still breathe" src="${r.img}" alt="${r.name}">` : '<canvas id="cv"></canvas>'}<div class="name"><span>"${r.greet[0]}"</span><a class="btn" href="#/r/${r.id}">인물 시트</a></div></div>
       ${chatHtml('<button class="btn go wide" data-light>빛 보내기 (광도 +10)</button>')}</div>`;
   const cv = $('#cv'); const rig = new FaceRig(); let raf;
-  const loop = (now) => { portrait(cv, r.avatar, rig.update(now)); raf = requestAnimationFrame(loop); }; raf = requestAnimationFrame(loop);
+  const loop = (now) => { portrait(cv, r.avatar, rig.update(now)); raf = requestAnimationFrame(loop); }; if (cv) raf = requestAnimationFrame(loop);
   const stopChat = chatBox(view, () => { r.score.live += 10; });
   cleanup = () => { cancelAnimationFrame(raf); stopChat(); }; view.onclick = null;
 }
